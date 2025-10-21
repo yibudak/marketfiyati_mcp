@@ -6,8 +6,13 @@ import pytest
 from pydantic import ValidationError
 
 from app.models import (
+    CategoriesResponse,
+    Category,
+    DepotLocation,
     FacetItem,
     FacetMap,
+    NearestDepot,
+    NearestDepotRequest,
     Product,
     ProductDepotInfo,
     SearchRequest,
@@ -42,6 +47,15 @@ def test_search_request_validation():
             latitude=39.9366,
             longitude=32.5859,
             size=101,  # Invalid: must be <= 100
+        )
+
+    # Test distance validation
+    with pytest.raises(ValidationError):
+        SearchRequest(
+            keywords="test",
+            latitude=39.9366,
+            longitude=32.5859,
+            distance=0,  # Invalid: must be >= 1
         )
 
 
@@ -118,3 +132,86 @@ def test_search_response_model():
     assert response.numberOfFound == 100
     assert response.searchResultType == 1
     assert len(response.content) == 0
+
+
+def test_depot_location_model():
+    """Test DepotLocation model"""
+    location = DepotLocation(lon=32.588585, lat=39.941654)
+
+    assert location.lon == 32.588585
+    assert location.lat == 39.941654
+
+
+def test_nearest_depot_model():
+    """Test NearestDepot model"""
+    depot = NearestDepot(
+        id="bim-U751",
+        sellerName="Saraycık Camisincan",
+        location=DepotLocation(lon=32.588585, lat=39.941654),
+        marketName="bim",
+        distance=597.5797281730618,
+    )
+
+    assert depot.id == "bim-U751"
+    assert depot.sellerName == "Saraycık Camisincan"
+    assert depot.marketName == "bim"
+    assert depot.distance == 597.5797281730618
+    assert depot.location.lon == 32.588585
+    assert depot.location.lat == 39.941654
+
+
+def test_nearest_depot_request_validation():
+    """Test NearestDepotRequest validation"""
+    # Valid request
+    request = NearestDepotRequest(
+        latitude=39.9366619061509, longitude=32.5859851407316, distance=1
+    )
+    assert request.latitude == 39.9366619061509
+    assert request.longitude == 32.5859851407316
+    assert request.distance == 1
+
+    # Test default distance
+    request = NearestDepotRequest(latitude=39.9366, longitude=32.5859)
+    assert request.distance == 1  # Default value
+
+    # Test distance validation
+    with pytest.raises(ValidationError):
+        NearestDepotRequest(
+            latitude=39.9366,
+            longitude=32.5859,
+            distance=0,  # Invalid: must be >= 1
+        )
+
+
+def test_category_model():
+    """Test Category model"""
+    category = Category(
+        name="Meyve ve Sebze",
+        subcategories=["Meyve", "Sebze"],
+    )
+
+    assert category.name == "Meyve ve Sebze"
+    assert len(category.subcategories) == 2
+    assert category.subcategories[0] == "Meyve"
+    assert category.subcategories[1] == "Sebze"
+
+
+def test_categories_response_model():
+    """Test CategoriesResponse model"""
+    response = CategoriesResponse(
+        content=[
+            Category(
+                name="Meyve ve Sebze",
+                subcategories=["Meyve", "Sebze"],
+            ),
+            Category(
+                name="Süt Ürünleri ve Kahvaltılık",
+                subcategories=["Süt", "Yumurta", "Peynir"],
+            ),
+        ]
+    )
+
+    assert len(response.content) == 2
+    assert response.content[0].name == "Meyve ve Sebze"
+    assert response.content[1].name == "Süt Ürünleri ve Kahvaltılık"
+    assert len(response.content[1].subcategories) == 3

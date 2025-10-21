@@ -7,9 +7,16 @@ from datetime import datetime, timedelta
 import httpx
 
 from ..config import DEFAULT_CACHE_SECONDS, MARKETFIYAT_BASE_URL
-from ..models import SearchRequest, SearchResponse
+from ..models import (
+    CategoriesResponse,
+    NearestDepot,
+    NearestDepotRequest,
+    SearchByCategoryRequest,
+    SearchRequest,
+    SearchResponse,
+)
 
-CacheKey = tuple[str, int, int, float | None, float | None]
+CacheKey = tuple[str, int, int, float, float, int]
 
 
 @dataclass
@@ -50,8 +57,44 @@ class MarketfiyatService:
             await self._client.aclose()
             self._client = None
 
-    async def search_by_categories(self, request: SearchRequest) -> SearchResponse:
-        """Search products by categories"""
+    async def get_nearest_depots(
+        self, latitude: float, longitude: float, distance: int = 1
+    ) -> list[NearestDepot]:
+        """Get nearest depots within the specified distance"""
+        if self._client is None:
+            await self.initialize()
+
+        try:
+            nearest_request = NearestDepotRequest(
+                latitude=latitude, longitude=longitude, distance=distance
+            )
+            response = await self._client.post(
+                "/api/v2/nearest",
+                json=nearest_request.model_dump(),
+            )
+            response.raise_for_status()
+            data = response.json()
+            return [NearestDepot(**depot) for depot in data]
+
+        except httpx.HTTPStatusError as exc:
+            raise MarketfiyatServiceError(
+                "Nearest depots API request failed "
+                f"with status {exc.response.status_code}",
+                status_code=exc.response.status_code,
+            ) from exc
+        except httpx.RequestError as exc:
+            raise MarketfiyatServiceError(
+                f"Failed to connect to Marketfiyat API: {str(exc)}"
+            ) from exc
+        except Exception as exc:
+            raise MarketfiyatServiceError(f"Unexpected error: {str(exc)}") from exc
+
+    async def search(self, request: SearchRequest) -> SearchResponse:
+        """
+        Search products using a two-step process (without menuCategory):
+        1. Get nearest depots based on location and distance
+        2. Search products in those depots
+        """
         if self._client is None:
             await self.initialize()
 
@@ -61,9 +104,29 @@ class MarketfiyatService:
             return cached
 
         try:
+            # Step 1: Get nearest depots based on location and distance
+            nearest_depots = await self.get_nearest_depots(
+                latitude=request.latitude,
+                longitude=request.longitude,
+                distance=request.distance,
+            )
+            # Extract depot IDs from nearest depots
+            depot_ids = [depot.id for depot in nearest_depots]
+
+            # Step 2: Search products using the depot IDs
+            search_payload = {
+                "keywords": request.keywords,
+                "pages": request.pages,
+                "size": request.size,
+                "latitude": request.latitude,
+                "longitude": request.longitude,
+                "distance": request.distance,
+                "depots": depot_ids,
+            }
+
             response = await self._client.post(
-                "/api/v2/searchByCategories",
-                json=request.model_dump(exclude_none=False),
+                "/api/v2/search",
+                json=search_payload,
             )
             response.raise_for_status()
             data = response.json()
@@ -84,6 +147,90 @@ class MarketfiyatService:
         except Exception as exc:
             raise MarketfiyatServiceError(f"Unexpected error: {str(exc)}") from exc
 
+    async def search_by_categories(
+        self, request: SearchByCategoryRequest
+    ) -> SearchResponse:
+        """
+        Search products by categories using a two-step process (with menuCategory):
+        1. Get nearest depots based on location and distance
+        2. Search products in those depots
+        """
+        if self._client is None:
+            await self.initialize()
+
+        cache_key = self._build_cache_key_with_menu(request)
+        cached = await self._read_cache(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            # Step 1: Get nearest depots based on location and distance
+            nearest_depots = await self.get_nearest_depots(
+                latitude=request.latitude,
+                longitude=request.longitude,
+                distance=request.distance,
+            )
+            # Extract depot IDs from nearest depots
+            depot_ids = [depot.id for depot in nearest_depots]
+
+            # Step 2: Search products using the depot IDs
+            search_payload = {
+                "keywords": request.keywords,
+                "pages": request.pages,
+                "size": request.size,
+                "latitude": request.latitude,
+                "longitude": request.longitude,
+                "distance": request.distance,
+                "depots": depot_ids,
+                "menuCategory": request.menuCategory,
+            }
+
+            response = await self._client.post(
+                "/api/v2/search",
+                json=search_payload,
+            )
+            response.raise_for_status()
+            data = response.json()
+            search_response = SearchResponse(**data)
+
+            await self._write_cache(cache_key, search_response)
+            return search_response
+
+        except httpx.HTTPStatusError as exc:
+            raise MarketfiyatServiceError(
+                f"API request failed with status {exc.response.status_code}",
+                status_code=exc.response.status_code,
+            ) from exc
+        except httpx.RequestError as exc:
+            raise MarketfiyatServiceError(
+                f"Failed to connect to Marketfiyat API: {str(exc)}"
+            ) from exc
+        except Exception as exc:
+            raise MarketfiyatServiceError(f"Unexpected error: {str(exc)}") from exc
+
+    async def get_categories(self) -> CategoriesResponse:
+        """Get available product categories"""
+        if self._client is None:
+            await self.initialize()
+
+        try:
+            response = await self._client.get("/api/v1/info/categories")
+            response.raise_for_status()
+            data = response.json()
+            return CategoriesResponse(**data)
+
+        except httpx.HTTPStatusError as exc:
+            raise MarketfiyatServiceError(
+                f"Categories API request failed with status {exc.response.status_code}",
+                status_code=exc.response.status_code,
+            ) from exc
+        except httpx.RequestError as exc:
+            raise MarketfiyatServiceError(
+                f"Failed to connect to Marketfiyat API: {str(exc)}"
+            ) from exc
+        except Exception as exc:
+            raise MarketfiyatServiceError(f"Unexpected error: {str(exc)}") from exc
+
     # Internal helpers -------------------------------------------------
 
     @staticmethod
@@ -94,6 +241,20 @@ class MarketfiyatService:
             request.size,
             request.latitude,
             request.longitude,
+            request.distance,
+        )
+
+    @staticmethod
+    def _build_cache_key_with_menu(request: SearchByCategoryRequest) -> CacheKey:
+        # For category search, we append menuCategory as part of the cache key
+        # We convert bool to int (0 or 1) to fit the tuple structure
+        return (
+            f"{request.keywords.lower()}_{int(request.menuCategory)}",
+            request.pages,
+            request.size,
+            request.latitude,
+            request.longitude,
+            request.distance,
         )
 
     async def _read_cache(self, cache_key: CacheKey) -> SearchResponse | None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
+from .categories import router as categories_router
 from .health import router as health_router
 from .search import router as search_router
 
-__all__ = ["health_router", "search_router"]
+__all__ = ["health_router", "search_router", "categories_router"]

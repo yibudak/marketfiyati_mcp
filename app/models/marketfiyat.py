@@ -3,8 +3,33 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+class NearestDepotRequest(BaseModel):
+    """Request model for finding nearest depots"""
+
+    latitude: float = Field(..., description="User latitude coordinate")
+    longitude: float = Field(..., description="User longitude coordinate")
+    distance: int = Field(default=1, ge=1, description="Search radius in kilometers")
+
+
+class DepotLocation(BaseModel):
+    """Depot location coordinates"""
+
+    lon: float = Field(..., description="Longitude coordinate")
+    lat: float = Field(..., description="Latitude coordinate")
+
+
+class NearestDepot(BaseModel):
+    """Information about a nearby depot"""
+
+    id: str = Field(..., description="Unique depot identifier (e.g., 'bim-U751')")
+    sellerName: str = Field(..., description="Depot/seller name")
+    location: DepotLocation = Field(..., description="Depot location coordinates")
+    marketName: str = Field(..., description="Market name (e.g., 'bim', 'a101')")
+    distance: float = Field(..., description="Distance from user location in meters")
+
+
 class SearchRequest(BaseModel):
-    """Request model for searching products by categories"""
+    """Base request model for searching products"""
 
     keywords: str = Field(..., description="Search keywords or category name")
     latitude: float = Field(..., description="User latitude coordinate")
@@ -13,11 +38,13 @@ class SearchRequest(BaseModel):
     size: int = Field(
         default=24, ge=1, le=100, description="Number of results per page"
     )
+    distance: int = Field(default=1, ge=1, description="Search radius in kilometers")
+
+
+class SearchByCategoryRequest(SearchRequest):
+    """Request model for searching products by categories (includes menuCategory)"""
+
     menuCategory: bool = Field(default=True, description="Search in menu categories")
-    distance: int | None = Field(default=5, description="Search radius in kilometers")
-    depots: list[str] | None = Field(
-        default=None, description="List of depot IDs to search in"
-    )
 
 
 class ProductDepotInfo(BaseModel):
@@ -88,3 +115,16 @@ class SearchResponse(BaseModel):
     searchResultType: int = Field(..., description="Type of search result")
     content: list[Product] = Field(..., description="List of products")
     facetMap: FacetMap = Field(..., description="Available filters and facets")
+
+
+class Category(BaseModel):
+    """Category information model"""
+
+    name: str = Field(..., description="Main category name")
+    subcategories: list[str] = Field(..., description="List of subcategory names")
+
+
+class CategoriesResponse(BaseModel):
+    """Response model for categories endpoint"""
+
+    content: list[Category] = Field(..., description="List of categories")
