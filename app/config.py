@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 try:
@@ -30,3 +31,11 @@ API_VERSION = _get_version()
 MARKETFIYAT_BASE_URL = "https://api.marketfiyati.org.tr"
 DEFAULT_CACHE_SECONDS = 300  # 5 minutes cache for price data
 ALLOWED_ORIGINS = ["*"]
+
+# Proxy configuration
+# Set SOCKS_PROXY environment variable to use a SOCKS proxy
+# Examples:
+#   SOCKS_PROXY=socks5://localhost:1080
+#   SOCKS_PROXY=socks5://username:password@proxy-server:1080
+#   SOCKS_PROXY=socks4://localhost:1080
+SOCKS_PROXY = os.environ.get("SOCKS_PROXY")

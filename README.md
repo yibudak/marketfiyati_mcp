@@ -25,6 +25,9 @@ docker pull ghcr.io/yibudak/marketfiyati_mcp:latest
 
 # Run the container
 docker run -d -p 8000:8000 --name marketfiyati-mcp ghcr.io/yibudak/marketfiyati_mcp:latest
+
+# Run with SOCKS proxy (optional)
+docker run -d -p 8000:8000 -e SOCKS_PROXY=socks5://localhost:1080 --name marketfiyati-mcp ghcr.io/yibudak/marketfiyati_mcp:latest
 ```
 
 The server will be available at <http://localhost:8000>
@@ -41,6 +44,9 @@ pip install -r requirements.txt
 
 # Run the server
 uvicorn app.main:app --port 8000
+
+# Run with SOCKS proxy (optional)
+SOCKS_PROXY=socks5://localhost:1080 uvicorn app.main:app --port 8000
 ```
 
 ## API Endpoints
@@ -55,6 +61,72 @@ The server provides the following endpoints:
 - **GET /mcp** - MCP protocol endpoint for AI tool integration
 
 For detailed API documentation, visit <http://localhost:8000/docs> after starting the server.
+
+## SOCKS Proxy Configuration
+
+The server supports SOCKS proxy for all external API calls to marketfiyati.org.tr. This is useful when you need to route requests through a proxy server.
+
+### Supported Proxy Types
+
+- SOCKS5 (recommended): `socks5://host:port`
+- SOCKS5 with authentication: `socks5://username:password@host:port`
+- SOCKS4: `socks4://host:port`
+
+### Configuration Methods
+
+#### Environment Variable
+
+Set the `SOCKS_PROXY` environment variable before starting the server:
+
+```bash
+# Linux/macOS
+export SOCKS_PROXY=socks5://localhost:1080
+uvicorn app.main:app --port 8000
+
+# Windows (PowerShell)
+$env:SOCKS_PROXY="socks5://localhost:1080"
+uvicorn app.main:app --port 8000
+
+# Windows (Command Prompt)
+set SOCKS_PROXY=socks5://localhost:1080
+uvicorn app.main:app --port 8000
+```
+
+#### Docker
+
+Pass the proxy configuration as an environment variable:
+
+```bash
+docker run -d -p 8000:8000 \
+  -e SOCKS_PROXY=socks5://localhost:1080 \
+  --name marketfiyati-mcp \
+  ghcr.io/yibudak/marketfiyati_mcp:latest
+```
+
+### Example Proxy Configurations
+
+```bash
+# Local SOCKS5 proxy (e.g., SSH tunnel)
+SOCKS_PROXY=socks5://localhost:1080
+
+# Remote SOCKS5 proxy with authentication
+SOCKS_PROXY=socks5://myuser:mypass@proxy.example.com:1080
+
+# SOCKS4 proxy
+SOCKS_PROXY=socks4://proxy.example.com:1080
+```
+
+### Creating a SOCKS Proxy with SSH
+
+You can create a local SOCKS5 proxy using SSH:
+
+```bash
+# Create an SSH tunnel that acts as a SOCKS5 proxy on port 1080
+ssh -D 1080 -C -N user@remote-server.com
+
+# Then run the server with the proxy
+SOCKS_PROXY=socks5://localhost:1080 uvicorn app.main:app --port 8000
+```
 
 ## Using with Claude Desktop
 

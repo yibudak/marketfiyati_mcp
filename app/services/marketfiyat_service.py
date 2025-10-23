@@ -5,8 +5,9 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 import httpx
+from httpx_socks import AsyncProxyTransport
 
-from ..config import DEFAULT_CACHE_SECONDS, MARKETFIYAT_BASE_URL
+from ..config import DEFAULT_CACHE_SECONDS, MARKETFIYAT_BASE_URL, SOCKS_PROXY
 from ..models import (
     CategoriesResponse,
     NearestDepot,
@@ -40,16 +41,23 @@ class MarketfiyatService:
         self._client: httpx.AsyncClient | None = None
 
     async def initialize(self) -> None:
-        """Initialize the HTTP client"""
+        """Initialize the HTTP client with optional SOCKS proxy support"""
         if self._client is None:
-            self._client = httpx.AsyncClient(
-                base_url=MARKETFIYAT_BASE_URL,
-                timeout=30.0,
-                headers={
+            client_kwargs = {
+                "base_url": MARKETFIYAT_BASE_URL,
+                "timeout": 30.0,
+                "headers": {
                     "Content-Type": "application/json",
                     "Accept": "application/json",
                 },
-            )
+            }
+
+            # Configure SOCKS proxy if SOCKS_PROXY environment variable is set
+            if SOCKS_PROXY:
+                transport = AsyncProxyTransport.from_url(SOCKS_PROXY)
+                client_kwargs["transport"] = transport
+
+            self._client = httpx.AsyncClient(**client_kwargs)
 
     async def close(self) -> None:
         """Close the HTTP client"""
